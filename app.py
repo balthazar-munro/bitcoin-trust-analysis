@@ -2,7 +2,14 @@
 Crypto-Trust Analytics: Bitcoin OTC Network Analysis
 Complete Enhanced Application with Graph Visualizations
 
-Version: 2.1 (UI Fixes + Module-Specific Visualizations)
+Version: 3.0 (Enhanced Visualizations with Proper Clustering, Color Coding, Sizing, and Labels)
+- Fixed tab indexing bugs
+- Improved node size scaling for better visibility
+- Added proper color coding for communities, paths, and components
+- Limited node counts for readable visualizations
+- Added interactive controls for customizing visualizations
+- Added reachability visualization
+- Added suspicious community visualization
 """
 
 import streamlit as st
@@ -324,8 +331,8 @@ if run_analysis or 'data_loaded' in st.session_state:
     # ========================================================================
     # TAB 2: GRAPH MODEL
     # ========================================================================
-    
-    with tabs[2]:
+
+    with tabs[1]:
         st.markdown("## 🔍 Graph Model Definition")
         
         col1, col2 = st.columns(2)
@@ -457,12 +464,15 @@ if run_analysis or 'data_loaded' in st.session_state:
             with st.spinner("Creating visualization..."):
                 html = visualization.create_centrality_subgraph_viz(G_trust, pagerank_scores, top_n=20)
                 st.components.v1.html(html, height=650, scrolling=False)
-                
+
                 st.info("""
                 **Legend**:
-                - Node size = PageRank score (bigger = more influential)
-                - Node color = Rank gradient (green = top ranked, blue = lower)
-                - Node label = User ID + rank number
+                - **Node size** = Rank position (larger = higher ranked)
+                - **Green nodes (#1-7)** = Top tier trust anchors
+                - **Cyan nodes (#8-14)** = Mid tier influencers
+                - **Blue nodes (#15-20)** = Lower tier but still top 20
+                - **Edges** = Trust connections between top users
+                - **Hover** = View detailed PageRank score
                 """)
     
     # ========================================================================
@@ -509,13 +519,41 @@ if run_analysis or 'data_loaded' in st.session_state:
             st.success("✅ No suspicious isolated communities detected")
         
         # Community Visualization
-        st.markdown("### 📊 Largest Communities Visualization")
+        st.markdown("### 📊 Community Structure Visualization")
+
+        col1, col2 = st.columns(2)
+        with col1:
+            num_comms = st.slider("Number of communities to show", 2, 5, 3, key='num_comms')
+        with col2:
+            nodes_per_comm = st.slider("Max nodes per community", 15, 50, 30, key='nodes_per_comm')
+
         if st.button("🎨 Generate Community Graph"):
             with st.spinner("Creating visualization..."):
-                html = visualization.create_community_viz(G_trust, partition, community_sizes, num_communities=2)
+                html = visualization.create_community_viz(
+                    G_trust, partition, community_sizes,
+                    num_communities=num_comms,
+                    max_nodes_per_community=nodes_per_comm
+                )
                 st.components.v1.html(html, height=650, scrolling=False)
-                
-                st.info("**Legend**: Different colors = different communities. Node size indicates connectivity.")
+
+                st.info("""
+                **Legend**:
+                - Each color = different community
+                - Node size = uniform for clarity
+                - Red edges = inter-community connections (bridges)
+                - White edges = intra-community connections
+                """)
+
+        # Suspicious communities visualization
+        if suspicious:
+            st.markdown("### 🚨 Suspicious Communities Visualization")
+            if st.button("🎨 Visualize Suspicious Clusters"):
+                with st.spinner("Creating visualization..."):
+                    html = visualization.create_suspicious_community_viz(
+                        G_trust, suspicious, partition, max_display=5
+                    )
+                    st.components.v1.html(html, height=650, scrolling=False)
+                    st.warning("**Red nodes** = First suspicious community. Other colors = additional suspicious clusters.")
     
     # ========================================================================
     # TAB 6: PATHS + VISUALIZATION
@@ -579,7 +617,15 @@ if run_analysis or 'data_loaded' in st.session_state:
                     with st.spinner("Creating visualization..."):
                         html = visualization.create_path_viz(G_trust, path_info['path'])
                         st.components.v1.html(html, height=650, scrolling=False)
-                        st.info("**Legend**: Red nodes/edges = trust path. Grey = context nodes.")
+
+                        st.info("""
+                        **Legend**:
+                        - **Green node** = Source (START)
+                        - **Yellow nodes** = Path steps
+                        - **Red node** = Target (END)
+                        - **Yellow edges** = Trust path
+                        - **Grey** = Context nodes for reference
+                        """)
             else:
                 st.error(f"❌ No path exists: {path_info['error']}")
                 st.warning("**Interpretation**: No trust relationship. HIGH RISK - do not proceed without verification.")
@@ -622,18 +668,29 @@ if run_analysis or 'data_loaded' in st.session_state:
         
         # Component Visualization
         st.markdown("### 📊 Component Visualization")
-        
-        viz_choice = st.radio("Show:", ["Largest Component", "5 Smallest Components"])
-        
+
+        col1, col2 = st.columns(2)
+        with col1:
+            viz_choice = st.radio("Show:", ["Largest Component", "5 Smallest Components"])
+        with col2:
+            max_nodes_comp = st.slider("Max nodes to display", 50, 150, 100, key='max_nodes_comp')
+
         if st.button("🎨 Generate Component Graph"):
             with st.spinner("Creating visualization..."):
                 if viz_choice == "Largest Component":
-                    html = visualization.create_component_viz(G, show_largest=True)
+                    html = visualization.create_component_viz(G, show_largest=True, max_nodes=max_nodes_comp)
                 else:
-                    html = visualization.create_component_viz(G, show_largest=False, show_smallest_n=5)
-                
+                    html = visualization.create_component_viz(G, show_largest=False, show_smallest_n=5, max_nodes=max_nodes_comp)
+
                 st.components.v1.html(html, height=650, scrolling=False)
-                st.info(f"Showing: {viz_choice}")
+
+                st.info(f"""
+                **Showing**: {viz_choice}
+                - **Green nodes** = Users in component
+                - **Green edges** = Trust ratings
+                - **Red edges** = Distrust ratings
+                - Nodes sampled by degree (most connected shown)
+                """)
     
     # ========================================================================
     # TAB 8: REACHABILITY (BFS)
@@ -671,9 +728,34 @@ if run_analysis or 'data_loaded' in st.session_state:
                     st.metric("3-hop total", f"{radius['total_reachable']:,}", "Full reach")
         
         st.info("""
-        💡 **Business Insight**: Top trust anchors can reach thousands of users within 2-3 hops. 
+        💡 **Business Insight**: Top trust anchors can reach thousands of users within 2-3 hops.
         Prioritize these users for platform governance and dispute resolution.
         """)
+
+        # Reachability Visualization
+        st.markdown("### 📊 Trust Radius Visualization")
+        st.markdown("See how trust propagates from a selected anchor user")
+
+        selected_anchor = st.selectbox(
+            "Select a trust anchor to visualize reach",
+            top_anchors[:5],
+            format_func=lambda x: f"User {x} (#{top_anchors.index(x)+1})",
+            key='reach_viz_anchor'
+        )
+
+        if st.button("🎨 Visualize Trust Radius"):
+            with st.spinner("Creating visualization..."):
+                radius = reachability.compute_trust_radius(G_trust, selected_anchor, max_hops=3)
+                html = visualization.create_reachability_viz(G_trust, selected_anchor, radius)
+                st.components.v1.html(html, height=650, scrolling=False)
+
+                st.info("""
+                **Legend**:
+                - **Red (center)** = Source anchor user
+                - **Green** = 1-hop (direct connections)
+                - **Cyan** = 2-hop (friends of friends)
+                - **Purple** = 3-hop (extended network)
+                """)
     
     # ========================================================================
     # TAB 9: VISUALIZATION GALLERY
@@ -691,23 +773,27 @@ if run_analysis or 'data_loaded' in st.session_state:
         )
         
         if viz_type == "Interactive Full Network (PyVis)":
-            st.markdown("### Interactive Network (Top 100 Nodes)")
-            
+            st.markdown("### Interactive Network (Top Nodes by PageRank)")
+
+            num_nodes_viz = st.slider("Number of nodes to visualize", 30, 100, 60, key='num_nodes_viz')
+
             if st.button("🎨 Generate Interactive Graph", key='gen_pyvis'):
-                with st.spinner("Creating visualization (may take 10-15 seconds)..."):
-                    top_nodes = [u for u, _ in centrality.get_top_nodes(pagerank_scores, n=100)]
+                with st.spinner("Creating visualization..."):
+                    top_nodes = [u for u, _ in centrality.get_top_nodes(pagerank_scores, n=num_nodes_viz)]
                     html = visualization.create_pyvis_interactive(
                         G_trust, top_nodes, pagerank_scores, partition
                     )
                     st.components.v1.html(html, height=700, scrolling=True)
-                    
+
                     st.info("""
                     **How to use**:
-                    - Drag nodes to rearrange
-                    - Zoom with mouse wheel
-                    - Hover over nodes for details
-                    - Node size = PageRank score
-                    - Node color = Community
+                    - **Drag** nodes to rearrange
+                    - **Zoom** with mouse wheel
+                    - **Hover** for user details
+                    - **Node size** = PageRank score (bigger = more influential)
+                    - **Node color** = Community membership
+                    - **Edge color**: Green = trust, Red = distrust
+                    - **Labels** show rank for top 20 users
                     """)
         else:
             st.markdown("### Static PNG Export")
@@ -860,4 +946,4 @@ else:
         """)
 
 st.markdown("---")
-st.markdown("<p style='text-align: center; color: #888;'>Crypto-Trust Analytics v2.1 | Enhanced with Module Visualizations</p>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center; color: #888;'>Crypto-Trust Analytics v3.0 | Enhanced Visualizations with Proper Clustering & Color Coding</p>", unsafe_allow_html=True)
