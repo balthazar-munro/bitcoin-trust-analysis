@@ -6,34 +6,66 @@ Functions for detecting and analyzing communities in trust networks.
 
 import networkx as nx
 from collections import Counter
+
+# Try to import community detection libraries with multiple fallbacks
+LOUVAIN_METHOD = None
+
 try:
     import community.community_louvain as community_louvain
+    LOUVAIN_METHOD = 'community_louvain'
 except ImportError:
-    import community as community_louvain
+    try:
+        import community as community_louvain
+        LOUVAIN_METHOD = 'community'
+    except ImportError:
+        # Use NetworkX's built-in louvain (available in networkx >= 3.0)
+        try:
+            from networkx.algorithms.community import louvain_communities
+            LOUVAIN_METHOD = 'networkx'
+        except ImportError:
+            LOUVAIN_METHOD = None
 
 
 def detect_communities(G_trust):
     """
     Detect communities using Louvain algorithm.
-    
+
     Args:
         G_trust: Trust subgraph (undirected or will be converted)
-        
+
     Returns:
         tuple: (partition dict, community_sizes Counter)
     """
     if G_trust.number_of_nodes() == 0:
         return {}, Counter()
-    
+
     # Convert to undirected for Louvain
     if G_trust.is_directed():
         G_undirected = G_trust.to_undirected()
     else:
         G_undirected = G_trust
-    
-    partition = community_louvain.best_partition(G_undirected, weight='weight')
+
+    # Use the appropriate method based on what's available
+    if LOUVAIN_METHOD == 'community_louvain' or LOUVAIN_METHOD == 'community':
+        partition = community_louvain.best_partition(G_undirected, weight='weight')
+    elif LOUVAIN_METHOD == 'networkx':
+        # NetworkX returns list of sets, convert to partition dict
+        communities = louvain_communities(G_undirected, weight='weight', seed=42)
+        partition = {}
+        for comm_id, comm_nodes in enumerate(communities):
+            for node in comm_nodes:
+                partition[node] = comm_id
+    else:
+        # Fallback: use greedy modularity communities
+        from networkx.algorithms.community import greedy_modularity_communities
+        communities = list(greedy_modularity_communities(G_undirected, weight='weight'))
+        partition = {}
+        for comm_id, comm_nodes in enumerate(communities):
+            for node in comm_nodes:
+                partition[node] = comm_id
+
     community_sizes = Counter(partition.values())
-    
+
     return partition, community_sizes
 
 
