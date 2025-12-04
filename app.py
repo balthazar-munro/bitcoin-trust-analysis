@@ -48,19 +48,61 @@ st.markdown("""
         background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
     }
     
-    /* Fix dropdown text color - make it black for readability */
-    .stSelectbox [data-baseweb="select"] {
+    /* Fix dropdown/selectbox text color - make it black for readability */
+    .stSelectbox [data-baseweb="select"],
+    .stSelectbox [data-baseweb="select"] * {
         background-color: rgba(255, 255, 255, 0.95) !important;
+        color: #000000 !important;
     }
-    
-    .stSelectbox [data-baseweb="select"] > div {
+
+    .stSelectbox [data-baseweb="select"] > div,
+    .stSelectbox [data-baseweb="select"] > div > div {
         color: #000000 !important;
         background-color: rgba(255, 255, 255, 0.95) !important;
     }
-    
-    .stSelectbox option {
+
+    .stSelectbox option,
+    [data-baseweb="menu"] *,
+    [data-baseweb="popover"] * {
         color: #000000 !important;
         background-color: #ffffff !important;
+    }
+
+    /* Fix multiselect */
+    .stMultiSelect [data-baseweb="select"] *,
+    .stMultiSelect [data-baseweb="tag"] * {
+        color: #000000 !important;
+    }
+
+    /* Fix text input */
+    .stTextInput input,
+    .stNumberInput input {
+        color: #000000 !important;
+        background-color: rgba(255, 255, 255, 0.95) !important;
+    }
+
+    /* Fix slider labels */
+    .stSlider [data-baseweb="slider"] {
+        color: #ffffff !important;
+    }
+
+    /* Fix radio buttons text */
+    .stRadio label span {
+        color: #ffffff !important;
+    }
+
+    /* Fix expander content text on white background */
+    .streamlit-expanderContent {
+        color: #ffffff !important;
+    }
+
+    /* Ensure info/warning/error boxes have black text */
+    .stAlert > div {
+        color: #000000 !important;
+    }
+
+    .stAlert p, .stAlert span, .stAlert div {
+        color: #000000 !important;
     }
     
     /* Metrics */
@@ -585,12 +627,20 @@ if run_analysis or 'data_loaded' in st.session_state:
             st.markdown("<br>", unsafe_allow_html=True)
             find_btn = st.button("🔍 Find Path", use_container_width=True)
         
+        # Store path in session state to persist across button clicks
         if find_btn and source and target:
             path_info = paths.find_shortest_path(G_trust, source, target)
-            
+            st.session_state['current_path_info'] = path_info
+            st.session_state['current_path_source'] = source
+            st.session_state['current_path_target'] = target
+
+        # Display path info if available in session state
+        if 'current_path_info' in st.session_state:
+            path_info = st.session_state['current_path_info']
+
             if path_info['exists']:
-                st.success(f"✅ Path exists: **{path_info['length']} hops**")
-                
+                st.success(f"✅ Path exists: **{path_info['length']} hops** (from {st.session_state.get('current_path_source')} to {st.session_state.get('current_path_target')})")
+
                 col1, col2, col3 = st.columns(3)
                 with col1:
                     st.metric("Path Length", f"{path_info['length']} hops")
@@ -600,9 +650,9 @@ if run_analysis or 'data_loaded' in st.session_state:
                     risk = paths.assess_path_risk(path_info)
                     risk_color = {"LOW": "🟢", "MEDIUM": "🟡", "ELEVATED": "🟠", "HIGH": "🔴"}
                     st.metric("Risk Level", f"{risk_color.get(risk, '⚪')} {risk}")
-                
+
                 st.markdown(f"**Path**: {' → '.join(map(str, path_info['path']))}")
-                
+
                 # Interpretation
                 if path_info['length'] <= 2:
                     st.info("**Interpretation**: Direct connection. Transaction safe to proceed.")
@@ -610,7 +660,7 @@ if run_analysis or 'data_loaded' in st.session_state:
                     st.warning("**Interpretation**: Extended trust path. Consider transaction limits.")
                 else:
                     st.error("**Interpretation**: Distant connection. Require additional verification.")
-                
+
                 # Path Visualization
                 st.markdown("### 📊 Path Visualization")
                 if st.button("🎨 Visualize Path"):
